@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1>Create New Release</h1>
+<form method="POST">
+    <div class="mb-3">
+        <label for="name" class="form-label">Release Name</label>
+        <input type="text" class="form-control" id="name" name="name" required>
+    </div>
+    <div class="mb-3">
+        <label for="description" class="form-label">Description</label>
+        <textarea class="form-control" id="description" name="description"></textarea>
+    </div>
+    <div class="mb-3">
+        <label for="manager" class="form-label">Release Manager</label>
+        <input type="text" class="form-control" id="manager" name="manager">
+    </div>
+    <div class="mb-3">
+        <label for="deputy" class="form-label">Deputy Manager</label>
+        <input type="text" class="form-control" id="deputy" name="deputy">
+    </div>
+    <button type="submit" class="btn btn-primary">Create Release</button>
+    <a href="/" class="btn btn-secondary">Cancel</a>
+</form>
+{% endblock %}

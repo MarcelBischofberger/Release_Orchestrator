@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-6">
+        <h1>Releases</h1>
+    </div>
+    <div class="col-md-6">
+        <form action="/" method="GET" class="d-flex">
+            <input class="form-control me-2" type="search" name="search" placeholder="Search Releases"
+                aria-label="Search" value="{{ search_query }}">
+            <button class="btn btn-outline-success" type="submit">Search</button>
+        </form>
+    </div>
+</div>
+
+<div class="list-group">
+    {% for release in releases %}
+    <a href="{{ url_for('release_detail', release_id=release.id) }}" class="list-group-item list-group-item-action">
+        <div class="d-flex w-100 justify-content-between">
+            <h5 class="mb-1">{{ release.name }}</h5>
+            <small>Manager: {{ release.manager }}</small>
+        </div>
+        <p class="mb-1">{{ release.description }}</p>
+        <div class="d-flex justify-content-between align-items-center">
+            <small>Packages: {{ release.packages|length }}</small>
+            <div>
+                {% for target_name, count in release_counts.get(release.id, {}).items() %}
+                <span class="badge bg-info text-dark me-1">{{ target_name }}: {{ count }}</span>
+                {% endfor %}
+            </div>
+        </div>
+    </a>
+    {% else %}
+    <div class="alert alert-info">No releases found.</div>
+    {% endfor %}
+</div>
+{% endblock %}

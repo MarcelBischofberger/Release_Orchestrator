@@ -1,0 +1,362 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="mb-4">
+    <div class="d-flex justify-content-between align-items-center">
+        <h1>{{ release.name }}</h1>
+        <div>
+            <!-- Edit/Delete Controls for Manager/Admin -->
+            <button type="button" class="btn btn-outline-primary btn-sm me-2" data-bs-toggle="modal"
+                data-bs-target="#editReleaseModal">
+                Edit Details
+            </button>
+            <form action="{{ url_for('delete_release', release_id=release.id) }}" method="POST" class="d-inline"
+                onsubmit="return confirm('Are you sure you want to DELETE this release? This cannot be undone.');">
+                <button type="submit" class="btn btn-outline-danger btn-sm me-3">Delete Release</button>
+            </form>
+
+            {% if release.deployment_status.name == 'deployed' %}
+            <span class="badge bg-success fs-5">Deployed</span>
+            {% elif release.deployment_status.name == 'deploying' %}
+            <span class="badge bg-warning text-dark fs-5">Deploying</span>
+            {% else %}
+            <span class="badge bg-secondary fs-5">Open</span>
+            {% endif %}
+        </div>
+    </div>
+    <div class="mt-2">
+        {% for target_name, count in deployed_counts.items() %}
+        <span class="badge bg-info text-dark me-1">{{ target_name }}: {{ count }}</span>
+        {% endfor %}
+    </div>
+    <p class="lead mt-3">{{ release.description }}</p>
+    <div class="row">
+        <div class="col-md-6">
+            <strong>Manager:</strong> {{ release.manager }}<br>
+            <strong>Deputy:</strong> {{ release.deputy }}
+        </div>
+    </div>
+</div>
+
+<hr>
+
+<h3>Deployment Schedule</h3>
+<div class="row mb-4">
+    <div class="col-md-8">
+        <table class="table table-sm">
+            <thead>
+                <tr>
+                    <th>Target</th>
+                    <th>Start Date</th>
+                    <th>End Date</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for schedule in release.schedules %}
+                <tr>
+                    <td>{{ schedule.target.name }}</td>
+                    <td>{{ schedule.start_date }}</td>
+                    <td>{{ schedule.end_date }}</td>
+                    <td>
+                        <form action="{{ url_for('delete_schedule', schedule_id=schedule.id) }}" method="POST"
+                            class="d-inline">
+                            <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="4">No schedule defined.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="card-title">Add Schedule Entry</h6>
+                <form action="{{ url_for('add_schedule', release_id=release.id) }}" method="POST">
+                    <div class="mb-2">
+                        <select class="form-select form-select-sm" name="target_id" required>
+                            <option value="" selected disabled>Select Target...</option>
+                            {% for target in all_targets %}
+                            <option value="{{ target.id }}">{{ target.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-2">
+                        <input type="date" class="form-control form-control-sm" name="start_date" required
+                            placeholder="Start Date">
+                    </div>
+                    <div class="mb-2">
+                        <input type="date" class="form-control form-control-sm" name="end_date" required
+                            placeholder="End Date">
+                    </div>
+                    <button type="submit" class="btn btn-sm btn-primary w-100">Add</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<hr>
+
+<h3>Packages</h3>
+
+<div class="mb-3">
+    <!-- Add Package Button -->
+    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addPackageModal">
+        Add Package
+    </button>
+
+    <!-- Bulk Operations -->
+    <button type="button" class="btn btn-info ms-2 text-white" data-bs-toggle="modal"
+        data-bs-target="#distributeReleaseModal">
+        Distribute Release
+    </button>
+    <button type="button" class="btn btn-success ms-2" data-bs-toggle="modal" data-bs-target="#deployReleaseModal">
+        Deploy Release
+    </button>
+    <form action="{{ url_for('fallback_release_all', release_id=release.id) }}" method="POST" class="d-inline"
+        onsubmit="return confirm('Are you sure you want to fallback ALL packages in this release?');">
+        <button type="button" class="btn btn-warning ms-2">Fallback Release</button>
+    </form>
+</div>
+
+<!-- Edit Release Modal -->
+<div class="modal fade" id="editReleaseModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Edit Release Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form action="{{ url_for('update_release', release_id=release.id) }}" method="POST">
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <textarea class="form-control" name="description" rows="3">{{ release.description }}</textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Manager</label>
+                        <input type="text" class="form-control" name="manager" value="{{ release.manager }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Deputy</label>
+                        <input type="text" class="form-control" name="deputy" value="{{ release.deputy }}">
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Update Release</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Distribute Release Modal -->
+<div class="modal fade" id="distributeReleaseModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Distribute Entire Release</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>This will distribute all non-deployed packages to the selected target.</p>
+                <form action="{{ url_for('distribute_release_all', release_id=release.id) }}" method="POST">
+                    <div class="mb-3">
+                        <label class="form-label">Select Target</label>
+                        <select class="form-select" name="target_id" required>
+                            <option value="" selected disabled>Select Target...</option>
+                            {% for target in targets %}
+                            <option value="{{ target.id }}">{{ target.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-info text-white w-100">Start Distribution</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Deploy Release Modal -->
+<div class="modal fade" id="deployReleaseModal" tabindex="-1" aria-labelledby="deployReleaseModalLabel"
+    aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deployReleaseModalLabel">Deploy Entire Release</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>This will deploy all packages in topological order (dependencies first).</p>
+                <form action="{{ url_for('deploy_release_all', release_id=release.id) }}" method="POST">
+                    <div class="mb-3">
+                        <label for="targetSelect" class="form-label">Select Deployment Target</label>
+                        <select class="form-select" id="targetSelect" name="target_id" required>
+                            <option value="" selected disabled>Select Target...</option>
+                            {% for target in targets %}
+                            <option value="{{ target.id }}">{{ target.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-success w-100">Start Deployment Sequence</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Package List -->
+<div class="accordion" id="packagesAccordion">
+    {% for pkg in packages %}
+    <div class="accordion-item">
+        <h2 class="accordion-header" id="heading{{ pkg.id }}">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                data-bs-target="#collapse{{ pkg.id }}">
+                <div class="d-flex w-100 justify-content-between me-3 align-items-center">
+                    <span>{{ pkg.name }} ({{ pkg.status.value }})</span>
+                    <div class="d-flex gap-1">
+                        {% for d in pkg.deployments %}
+                        {% if d.status.name == 'deployed' %}
+                        <span class="badge bg-success">{{ d.target.name }}</span>
+                        {% elif d.status.name == 'distributed' %}
+                        <span class="badge bg-info text-dark">{{ d.target.name }}</span>
+                        {% endif %}
+                        {% endfor %}
+                        {% if pkg.deployments|length == 0 %}
+                        <span class="badge bg-secondary">Not Deployed</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </button>
+        </h2>
+        <div id="collapse{{ pkg.id }}" class="accordion-collapse collapse" data-bs-parent="#packagesAccordion">
+            <div class="accordion-body">
+                <div class="row mb-3">
+                    <div class="col-md-8">
+                        <p><strong>URL:</strong> <a href="{{ pkg.url }}" target="_blank">{{ pkg.url }}</a></p>
+                        <p><strong>Status Message:</strong> {{ pkg.status_message }}</p>
+                    </div>
+                    <div class="col-md-4 text-end">
+                        <!-- Distribute Form (Generic) -->
+                        <form action="{{ url_for('distribute_package', package_id=pkg.id) }}" method="POST"
+                            class="d-flex justify-content-end mb-3">
+                            <select class="form-select form-select-sm me-2" name="target_id" required
+                                style="width: auto;">
+                                <option value="" selected disabled>Distribute to...</option>
+                                {% for target in targets %}
+                                <option value="{{ target.id }}">{{ target.name }}</option>
+                                {% endfor %}
+                            </select>
+                            <button type="submit" class="btn btn-info btn-sm text-white">Distribute</button>
+                        </form>
+
+                        <!-- Actions per Deployment -->
+                        {% for d in pkg.deployments %}
+                        {% if d.status.name == 'distributed' %}
+                        <form action="{{ url_for('deploy_package', package_id=pkg.id) }}" method="POST"
+                            class="d-flex justify-content-end align-items-center mb-1">
+                            <input type="hidden" name="target_id" value="{{ d.target.id }}">
+                            <span class="badge bg-info text-dark me-2">Distributed: {{ d.target.name }}</span>
+                            <button type="submit" class="btn btn-success btn-sm">Deploy</button>
+                        </form>
+                        {% elif d.status.name == 'deployed' %}
+                        <form action="{{ url_for('fallback_package', package_id=pkg.id) }}" method="POST"
+                            class="d-flex justify-content-end align-items-center mb-1">
+                            <input type="hidden" name="target_id" value="{{ d.target.id }}">
+                            <span class="badge bg-success me-2">Deployed: {{ d.target.name }}</span>
+                            <button type="submit" class="btn btn-warning btn-sm">Fallback</button>
+                        </form>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <h5>Dependencies</h5>
+                {% if pkg.dependencies.count() > 0 %}
+                <ul>
+                    {% for dep in pkg.dependencies %}
+                    <li>
+                        {{ dep.name }}
+                        <form action="{{ url_for('remove_dependency', package_id=pkg.id) }}" method="POST"
+                            class="d-inline">
+                            <input type="hidden" name="dependency_id" value="{{ dep.id }}">
+                            <button type="submit" class="btn btn-sm btn-link text-danger">Remove</button>
+                        </form>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-muted">No dependencies.</p>
+                {% endif %}
+
+                <!-- Add Dependency Form -->
+                <form action="{{ url_for('add_dependency', package_id=pkg.id) }}" method="POST"
+                    class="row g-2 align-items-center mb-3">
+                    <div class="col-auto">
+                        <select class="form-select form-select-sm" name="dependency_id">
+                            <option value="" selected disabled>Select package dependency...</option>
+                            {% for other_pkg in all_packages %}
+                            {% if other_pkg.id != pkg.id and other_pkg not in pkg.dependencies %}
+                            <option value="{{ other_pkg.id }}">{{ other_pkg.name }}</option>
+                            {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <button type="submit" class="btn btn-sm btn-secondary">Add Dependency</button>
+                    </div>
+                </form>
+
+                <form action="{{ url_for('delete_package', package_id=pkg.id) }}" method="POST"
+                    onsubmit="return confirm('Are you sure you want to delete this package?');">
+                    <button type="submit" class="btn btn-danger btn-sm">Delete Package</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <p>No packages in this release.</p>
+    {% endfor %}
+</div>
+
+<!-- Add Package Modal -->
+<div class="modal fade" id="addPackageModal" tabindex="-1" aria-labelledby="addPackageModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addPackageModalLabel">Add Package to Release</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form action="{{ url_for('add_package', release_id=release.id) }}" method="POST">
+                    <div class="mb-3">
+                        <label for="pkgName" class="form-label">Package Name</label>
+                        <input type="text" class="form-control" id="pkgName" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="pkgUrl" class="form-label">Nexus URL</label>
+                        <input type="url" class="form-control" id="pkgUrl" name="url">
+                    </div>
+                    <div class="mb-3">
+                        <label for="pkgStatus" class="form-label">Status</label>
+                        <select class="form-select" id="pkgStatus" name="status">
+                            {% for status in PackageStatus %}
+                            <option value="{{ status.name }}">{{ status.value }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="pkgMsg" class="form-label">Status Message</label>
+                        <input type="text" class="form-control" id="pkgMsg" name="status_message">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Add Package</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

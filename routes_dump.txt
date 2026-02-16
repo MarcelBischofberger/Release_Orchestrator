@@ -1,0 +1,23 @@
+Listing Routes:
+/static/<path:filename> -> static
+/login -> login
+/logout -> logout
+/ -> index
+/release/new -> new_release
+/release/<int:release_id> -> release_detail
+/release/<int:release_id>/add_package -> add_package
+/package/<int:package_id>/delete -> delete_package
+/package/<int:package_id>/dependency -> add_dependency
+/package/<int:package_id>/remove_dependency -> remove_dependency
+/targets -> targets
+/target/<int:target_id>/toggle_status -> toggle_target_status
+/package/<int:package_id>/distribute -> distribute_package
+/package/<int:package_id>/deploy -> deploy_package
+/package/<int:package_id>/fallback -> fallback_package
+/release/<int:release_id>/schedule -> add_schedule
+/schedule/<int:schedule_id>/delete -> delete_schedule
+/calendar -> calendar
+/api/calendar_events -> calendar_events
+/release/<int:release_id>/deploy_all -> deploy_release_all
+/release/<int:release_id>/fallback_all -> fallback_release_all
+/events -> events
