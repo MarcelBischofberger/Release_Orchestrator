@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, jso
 from models import db, User, Role, Release, Package, DeploymentTarget, ScheduledDeployment, PackageDeployment, EventLog, ReleaseDeploymentStatus, PackageStatus, PackageDeploymentStatus, TargetStatus
 from datetime import datetime, date
 import os
+import requests
 from functools import wraps
 
 app = Flask(__name__)
@@ -48,6 +49,29 @@ def log_event(category, operation, description):
     # Let's trust route commit.
     
     # Let's trust route commit.
+
+def call_agent(target_url, endpoint, payload):
+    """
+    Helper to call the agent server.
+    Returns (success, message)
+    """
+    try:
+        # Ensure URL has scheme
+        if not target_url.startswith('http'):
+            target_url = f'http://{target_url}'
+            
+        # Remove trailing slash if present
+        target_url = target_url.rstrip('/')
+        
+        url = f"{target_url}/{endpoint}"
+        response = requests.post(url, json=payload, timeout=5)
+        
+        if response.status_code == 200:
+            return True, "Agent accepted command"
+        else:
+            return False, f"Agent returned status {response.status_code}"
+    except requests.exceptions.RequestException as e:
+        return False, f"Agent connection failed: {str(e)}"
 
 # Authentication Logic
 @app.before_request
@@ -219,19 +243,45 @@ def distribute_release_all(release_id):
         return redirect(url_for('release_detail', release_id=release_id))
         
     count = 0
-    count = 0
+    errors = []
     for pkg in release.packages:
         # Check if already distributed/deployed to this target
         deployment = PackageDeployment.query.filter_by(package_id=pkg.id, target_id=target.id).first()
         
         if not deployment:
             # Create new deployment
+            
+            # Call Agent
+            payload = {
+                'package': pkg.name,
+                'nexus_url': pkg.url,
+                'release': release.name
+            }
+            success, msg = call_agent(target.url, 'distribute', payload)
+            
+            if not success:
+               errors.append(f"{pkg.name}: {msg}")
+               continue
+               
             deployment = PackageDeployment(package_id=pkg.id, target_id=target.id, status=PackageDeploymentStatus.distributed)
             db.session.add(deployment)
             count += 1
             log_event('package', 'distribute', f'Distributed {pkg.name} to {target.name} (Bulk)')
         elif deployment.status == PackageDeploymentStatus.not_deployed:
             # Re-distribute (e.g. from fallback)
+            
+            # Call Agent
+            payload = {
+                'package': pkg.name,
+                'nexus_url': pkg.url,
+                'release': release.name
+            }
+            success, msg = call_agent(target.url, 'distribute', payload)
+            
+            if not success:
+                errors.append(f"{pkg.name}: {msg}")
+                continue
+
             deployment.status = PackageDeploymentStatus.distributed
             deployment.deployed_at = datetime.utcnow()
             count += 1
@@ -241,9 +291,15 @@ def distribute_release_all(release_id):
     update_release_status(release)
     
     if count > 0:
-        flash(f'Distributed {count} packages to {target.name}.', 'success')
+        if errors:
+             flash(f'Distributed {count} packages to {target.name}. Errors: {", ".join(errors)}', 'warning')
+        else:
+             flash(f'Distributed {count} packages to {target.name}.', 'success')
     else:
-        flash('No applicable packages to distribute.', 'warning')
+        if errors:
+            flash(f'No packages distributed. Errors: {", ".join(errors)}', 'error')
+        else:
+            flash('No applicable packages to distribute.', 'warning')
         
     return redirect(url_for('release_detail', release_id=release_id))
 
@@ -398,6 +454,23 @@ def toggle_target_status(target_id):
     db.session.commit()
     return redirect(url_for('targets'))
 
+@app.route('/target/<int:target_id>/edit', methods=['GET', 'POST'])
+@requires_role(Role.admin)
+def edit_target(target_id):
+    target = DeploymentTarget.query.get_or_404(target_id)
+    
+    if request.method == 'POST':
+        target.name = request.form['name']
+        target.url = request.form['url']
+        
+        log_event('target', 'update', f'Updated target {target.name}')
+        db.session.commit()
+        
+        flash(f'Target "{target.name}" updated successfully.', 'success')
+        return redirect(url_for('targets'))
+        
+    return render_template('edit_target.html', target=target)
+
 
 @app.route('/package/<int:package_id>/distribute', methods=['POST'])
 @requires_role(Role.deployer)
@@ -415,18 +488,32 @@ def distribute_package(package_id):
         flash(f'Target {target.name} is LOCKED. Distribution prevented.', 'error')
         return redirect(url_for('release_detail', release_id=pkg.release_id))
 
-    # Check/Create Deployment
     deployment = PackageDeployment.query.filter_by(package_id=pkg.id, target_id=target.id).first()
-    if not deployment:
-        deployment = PackageDeployment(package_id=pkg.id, target_id=target.id, status=PackageDeploymentStatus.distributed)
-        db.session.add(deployment)
-    elif deployment.status == PackageDeploymentStatus.not_deployed:
-        deployment.status = PackageDeploymentStatus.distributed
-        deployment.deployed_at = datetime.utcnow()
-    else:
-        # Already distributed or deployed
-        flash(f'Package {pkg.name} is already {deployment.status.name} on {target.name}', 'info')
+    # Logic moved below to handle agent call first
+    if deployment and deployment.status != PackageDeploymentStatus.not_deployed and deployment.status != PackageDeploymentStatus.distributed:
+         # Already deployed?
+         if deployment.status == PackageDeploymentStatus.deployed:
+             flash(f'Package {pkg.name} is already deployed on {target.name}', 'info')
+             return redirect(url_for('release_detail', release_id=pkg.release_id))
+
+    # Call Agent
+    payload = {
+        'package': pkg.name,
+        'nexus_url': pkg.url,
+        'release': pkg.release.name
+    }
+    success, msg = call_agent(target.url, 'distribute', payload)
+    
+    if not success:
+        flash(f'Distribution failed: {msg}', 'error')
         return redirect(url_for('release_detail', release_id=pkg.release_id))
+
+    if not deployment:
+         deployment = PackageDeployment(package_id=pkg.id, target_id=target.id, status=PackageDeploymentStatus.distributed)
+         db.session.add(deployment)
+    else:
+         deployment.status = PackageDeploymentStatus.distributed
+         deployment.deployed_at = datetime.utcnow()
 
     log_event('package', 'distribute', f'Distributed {pkg.name} to {target.name}')
     db.session.commit()
@@ -471,6 +558,18 @@ def deploy_package(package_id):
     
     if missing_deps:
         flash(f"Deployment Failed. Dependency requirements not met on {target.name}. Missing: {', '.join(missing_deps)}", 'error')
+        return redirect(url_for('release_detail', release_id=pkg.release_id))
+
+    # Call Agent
+    payload = {
+        'package': pkg.name,
+        'nexus_url': pkg.url,
+        'release': pkg.release.name
+    }
+    success, msg = call_agent(target.url, 'deploy', payload)
+    
+    if not success:
+        flash(f'Deployment failed: {msg}', 'error')
         return redirect(url_for('release_detail', release_id=pkg.release_id))
 
     deployment.status = PackageDeploymentStatus.deployed
@@ -680,6 +779,18 @@ def deploy_release_all(release_id):
             errors.append(f"Package {pkg.name} cannot be deployed because dependencies are missing on {target.name}: {', '.join(missing_deps)}")
             continue # Skip this package
             
+        # Call Agent
+        payload = {
+            'package': pkg.name,
+            'nexus_url': pkg.url,
+            'release': release.name
+        }
+        success, msg = call_agent(target.url, 'deploy', payload)
+        
+        if not success:
+            errors.append(f"{pkg.name}: {msg}")
+            continue
+
         # Deploy
         deployment.status = PackageDeploymentStatus.deployed
         deployment.deployed_at = datetime.utcnow()

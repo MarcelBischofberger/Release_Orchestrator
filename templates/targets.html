@@ -50,13 +50,19 @@
             <td>{{ target.name }}</td>
             <td><a href="{{ target.url }}" target="_blank">{{ target.url }}</a></td>
             <td>
-                <form action="{{ url_for('toggle_target_status', target_id=target.id) }}" method="POST">
-                    {% if target.status.name == 'available' %}
-                    <button type="submit" class="btn btn-success btn-sm">Available (Click to Lock)</button>
-                    {% else %}
-                    <button type="submit" class="btn btn-danger btn-sm">Locked (Click to Unlock)</button>
+                <div class="btn-group" role="group">
+                    <form action="{{ url_for('toggle_target_status', target_id=target.id) }}" method="POST"
+                        class="me-1">
+                        {% if target.status.name == 'available' %}
+                        <button type="submit" class="btn btn-success btn-sm">Available</button>
+                        {% else %}
+                        <button type="submit" class="btn btn-danger btn-sm">Locked</button>
+                        {% endif %}
+                    </form>
+                    {% if g.user.role.name == 'admin' %}
+                    <a href="{{ url_for('edit_target', target_id=target.id) }}" class="btn btn-primary btn-sm">Edit</a>
                     {% endif %}
-                </form>
+                </div>
             </td>
             {% if g.user.role.name == 'admin' %}
             <td>

@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1>Edit Deployment Target</h1>
+
+<div class="card mb-4">
+    <div class="card-header">Edit Target Details</div>
+    <div class="card-body">
+        <form method="POST">
+            <div class="mb-3">
+                <label for="name" class="form-label">Name</label>
+                <input type="text" class="form-control" id="name" name="name" value="{{ target.name }}" required>
+            </div>
+            <div class="mb-3">
+                <label for="url" class="form-label">URL (with port)</label>
+                <input type="text" class="form-control" id="url" name="url" value="{{ target.url }}" required>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Update Target</button>
+            <a href="{{ url_for('targets') }}" class="btn btn-secondary">Cancel</a>
+        </form>
+    </div>
+</div>
+{% endblock %}
